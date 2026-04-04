@@ -41,6 +41,7 @@ export default function SharePage() {
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
   const [commentError, setCommentError] = useState<string | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
   const playerRef = useRef<VideoPlayerHandle | null>(null);
 
   const { shareInfo, videoData, comments } = useShareData({ token, grantToken });
@@ -163,12 +164,18 @@ export default function SharePage() {
   const handleDownload = useCallback(async () => {
     if (!grantToken || isDownloading) return;
 
+    setDownloadError(null);
     setIsDownloading(true);
     try {
       const result = await getDownloadUrl({ grantToken });
       triggerDownload(result.url, result.filename);
     } catch (error) {
       console.error("Failed to prepare shared download:", error);
+      setDownloadError(
+        error instanceof Error
+          ? error.message
+          : "Unable to prepare this download right now.",
+      );
     } finally {
       setIsDownloading(false);
     }
@@ -298,6 +305,15 @@ export default function SharePage() {
       </header>
 
       <main className="max-w-6xl mx-auto p-6 space-y-6">
+        {downloadError ? (
+          <div
+            role="alert"
+            className="border-2 border-[#dc2626] bg-[#dc2626]/10 px-4 py-3 text-sm text-[#7f1d1d]"
+          >
+            {downloadError}
+          </div>
+        ) : null}
+
         <div>
           <h1 className="text-2xl font-black text-[#1a1a1a]">{video.title}</h1>
           {video.description && (

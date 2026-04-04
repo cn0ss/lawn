@@ -80,6 +80,19 @@ async function buildDownloadResult(
   };
 }
 
+function getDownloadUnavailableMessage(status: string) {
+  switch (status) {
+    case "uploading":
+      return "This video is still uploading and isn't ready to download yet.";
+    case "processing":
+      return "This video is still processing and isn't ready to download yet.";
+    case "failed":
+      return "This video couldn't be processed, so it isn't available to download.";
+    default:
+      return "This video isn't ready to download yet.";
+  }
+}
+
 function normalizeBucketKey(key: string): string {
   if (key.startsWith("http://") || key.startsWith("https://")) {
     try {
@@ -522,7 +535,7 @@ export const getDownloadUrl = action({
     }
 
     if (video.status !== "ready") {
-      throw new Error("Video not found or not ready");
+      throw new Error(getDownloadUnavailableMessage(video.status));
     }
 
     const key = getValueString(video, "s3Key");
@@ -544,12 +557,16 @@ export const getPublicDownloadUrl = action({
     filename: v.string(),
   }),
   handler: async (ctx, args): Promise<{ url: string; filename: string }> => {
-    const result = await ctx.runQuery(api.videos.getByPublicId, {
+    const result = await ctx.runQuery(api.videos.getByPublicIdForDownload, {
       publicId: args.publicId,
     });
 
     if (!result?.video) {
       throw new Error("Video not found");
+    }
+
+    if (result.video.status !== "ready") {
+      throw new Error(getDownloadUnavailableMessage(result.video.status));
     }
 
     const key = getValueString(result.video, "s3Key");
@@ -571,12 +588,20 @@ export const getSharedDownloadUrl = action({
     filename: v.string(),
   }),
   handler: async (ctx, args): Promise<{ url: string; filename: string }> => {
-    const result = await ctx.runQuery(api.videos.getByShareGrant, {
+    const result = await ctx.runQuery(api.videos.getByShareGrantForDownload, {
       grantToken: args.grantToken,
     });
 
     if (!result?.video) {
       throw new Error("Video not found");
+    }
+
+    if (!result.allowDownload) {
+      throw new Error("Downloads are disabled for this shared link.");
+    }
+
+    if (result.video.status !== "ready") {
+      throw new Error(getDownloadUnavailableMessage(result.video.status));
     }
 
     const key = getValueString(result.video, "s3Key");
