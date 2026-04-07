@@ -13,11 +13,16 @@ import {
   resolvePlanFromStripePriceId,
   TEAM_PLAN_MONTHLY_PRICE_USD,
   TEAM_PLAN_STORAGE_LIMIT_BYTES,
+  type TeamPlan,
 } from "./billingHelpers";
 
 const stripeClient = new StripeSubscriptions(components.stripe, {});
 const stripe = new Stripe(stripeClient.apiKey);
 const TEAM_TRIAL_DAYS = 7;
+const PLAN_RANK = {
+  basic: 0,
+  pro: 1,
+} as const satisfies Record<TeamPlan, number>;
 
 const teamPlanValidator = v.union(v.literal("basic"), v.literal("pro"));
 const teamRoleValidator = v.union(
@@ -159,6 +164,119 @@ export const createCustomerPortalSession = action({
       customerId: stripeCustomerId,
       returnUrl: args.returnUrl,
     });
+  },
+});
+
+export const updateTeamSubscriptionPlan = action({
+  args: {
+    teamId: v.id("teams"),
+    plan: teamPlanValidator,
+  },
+  returns: v.object({
+    plan: teamPlanValidator,
+    subscriptionStatus: v.string(),
+  }),
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{ plan: TeamPlan; subscriptionStatus: string }> => {
+    const team = await ctx.runQuery(api.teams.get, { teamId: args.teamId });
+
+    if (!team) {
+      throw new Error("Team not found");
+    }
+
+    if (team.role !== "owner") {
+      throw new Error("Only team owners can manage billing.");
+    }
+
+    const existingSubscription = await ctx.runQuery(
+      components.stripe.public.getSubscriptionByOrgId,
+      { orgId: args.teamId },
+    );
+
+    const stripeSubscriptionId =
+      existingSubscription?.stripeSubscriptionId ?? team.stripeSubscriptionId;
+
+    if (!stripeSubscriptionId) {
+      throw new Error("No active subscription found for this team.");
+    }
+
+    const stripePriceId = getStripePriceIdForPlan(args.plan);
+    const subscription = await stripe.subscriptions.retrieve(stripeSubscriptionId);
+
+    if (!hasActiveTeamSubscriptionStatus(subscription.status)) {
+      throw new Error("Only active subscriptions can be upgraded.");
+    }
+
+    const currentItem = subscription.items.data[0];
+
+    if (!currentItem) {
+      throw new Error("Subscription has no items.");
+    }
+
+    const currentPlan =
+      resolvePlanFromStripePriceId(currentItem.price.id) ??
+      resolvePlanFromStripePriceId(existingSubscription?.priceId) ??
+      normalizeStoredTeamPlan(team.plan);
+
+    if (args.plan === currentPlan) {
+      throw new Error(`This team is already on ${args.plan}.`);
+    }
+
+    if (PLAN_RANK[args.plan] <= PLAN_RANK[currentPlan]) {
+      throw new Error("Use the billing portal to downgrade this subscription.");
+    }
+
+    const updatedSubscription = await stripe.subscriptions.update(
+      stripeSubscriptionId,
+      {
+        items: [
+          {
+            id: currentItem.id,
+            price: stripePriceId,
+            quantity: currentItem.quantity ?? 1,
+          },
+        ],
+        metadata: {
+          ...subscription.metadata,
+          orgId: team._id,
+          plan: args.plan,
+          teamSlug: team.slug,
+        },
+        proration_behavior: "create_prorations",
+      },
+    );
+
+    const updatedItem = updatedSubscription.items.data[0];
+    const updatedPriceId = updatedItem?.price?.id ?? stripePriceId;
+
+    await ctx.runMutation(components.stripe.private.handleSubscriptionUpdated, {
+      stripeSubscriptionId: updatedSubscription.id,
+      status: updatedSubscription.status,
+      currentPeriodEnd: updatedItem?.current_period_end ?? 0,
+      cancelAtPeriodEnd: updatedSubscription.cancel_at_period_end ?? false,
+      cancelAt: updatedSubscription.cancel_at ?? undefined,
+      quantity: updatedItem?.quantity ?? 1,
+      priceId: updatedPriceId,
+      metadata: updatedSubscription.metadata ?? {},
+    });
+
+    await ctx.runMutation(internal.billing.syncTeamSubscriptionFromWebhook, {
+      orgId: team._id,
+      stripeCustomerId:
+        typeof updatedSubscription.customer === "string"
+          ? updatedSubscription.customer
+          : undefined,
+      stripeSubscriptionId: updatedSubscription.id,
+      stripePriceId: updatedPriceId,
+      status: updatedSubscription.status,
+    });
+
+    return {
+      plan: args.plan,
+      subscriptionStatus: updatedSubscription.status,
+    };
   },
 });
 

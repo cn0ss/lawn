@@ -42,6 +42,11 @@ const BILLING_PLANS: Record<
   },
 };
 
+const PLAN_RANK = {
+  basic: 0,
+  pro: 1,
+} as const satisfies Record<BillingPlan, number>;
+
 function normalizeTeamPlan(plan: string): BillingPlan {
   return plan === "pro" || plan === "team" ? "pro" : "basic";
 }
@@ -71,6 +76,9 @@ export default function TeamSettingsPage() {
   const createCustomerPortalSession = useAction(
     api.billing.createCustomerPortalSession,
   );
+  const updateTeamSubscriptionPlan = useAction(
+    api.billing.updateTeamSubscriptionPlan,
+  );
 
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState("");
@@ -78,8 +86,10 @@ export default function TeamSettingsPage() {
   const [isCheckingOutPlan, setIsCheckingOutPlan] = useState<BillingPlan | null>(
     null,
   );
+  const [isChangingPlan, setIsChangingPlan] = useState<BillingPlan | null>(null);
   const [isOpeningPortal, setIsOpeningPortal] = useState(false);
   const [billingError, setBillingError] = useState<string | null>(null);
+  const [billingNotice, setBillingNotice] = useState<string | null>(null);
   const prewarmTeamIntentHandlers = useRoutePrewarmIntent(() => {
     if (!team?.slug) return;
     return prewarmTeam(convex, { teamSlug: team.slug });
@@ -167,6 +177,7 @@ export default function TeamSettingsPage() {
   const handleStartCheckout = async (targetPlan: BillingPlan) => {
     if (typeof window === "undefined") return;
     setBillingError(null);
+    setBillingNotice(null);
     setIsCheckingOutPlan(targetPlan);
 
     try {
@@ -194,9 +205,37 @@ export default function TeamSettingsPage() {
     }
   };
 
+  const handleChangePlan = async (targetPlan: BillingPlan) => {
+    const targetConfig = BILLING_PLANS[targetPlan];
+    const confirmed = confirm(
+      `Upgrade ${team.name} to ${targetConfig.label} for $${targetConfig.monthlyPriceUsd}/month? Stripe will prorate the current billing period.`,
+    );
+
+    if (!confirmed) return;
+
+    setBillingError(null);
+    setBillingNotice(null);
+    setIsChangingPlan(targetPlan);
+
+    try {
+      await updateTeamSubscriptionPlan({
+        teamId: team._id,
+        plan: targetPlan,
+      });
+      setBillingNotice(`Plan updated to ${targetConfig.label}.`);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unable to change plan.";
+      setBillingError(message);
+    } finally {
+      setIsChangingPlan(null);
+    }
+  };
+
   const handleOpenPortal = async () => {
     if (typeof window === "undefined") return;
     setBillingError(null);
+    setBillingNotice(null);
     setIsOpeningPortal(true);
 
     try {
@@ -348,6 +387,10 @@ export default function TeamSettingsPage() {
                 {(Object.keys(BILLING_PLANS) as BillingPlan[]).map((planId) => {
                   const config = BILLING_PLANS[planId];
                   const isCurrentPlan = planId === plan && hasActiveSubscription;
+                  const isUpgradePlan =
+                    isOwner &&
+                    hasActiveSubscription &&
+                    PLAN_RANK[planId] > PLAN_RANK[plan];
                   return (
                     <div
                       key={planId}
@@ -387,13 +430,30 @@ export default function TeamSettingsPage() {
                         <Button
                           variant={planId === "pro" ? "primary" : "default"}
                           className="w-full mt-4"
-                          disabled={isCheckingOutPlan !== null}
+                          disabled={
+                            isCheckingOutPlan !== null || isChangingPlan !== null
+                          }
                           onClick={() => void handleStartCheckout(planId)}
                         >
                           <CreditCard className="mr-2 h-4 w-4" />
                           {isCheckingOutPlan === planId
                             ? "Redirecting..."
                             : `Start ${config.label} Trial`}
+                        </Button>
+                      )}
+                      {isUpgradePlan && (
+                        <Button
+                          variant="primary"
+                          className="w-full mt-4"
+                          disabled={
+                            isCheckingOutPlan !== null || isChangingPlan !== null
+                          }
+                          onClick={() => void handleChangePlan(planId)}
+                        >
+                          <CreditCard className="mr-2 h-4 w-4" />
+                          {isChangingPlan === planId
+                            ? "Upgrading..."
+                            : `Upgrade to ${config.label}`}
                         </Button>
                       )}
                     </div>
@@ -418,6 +478,11 @@ export default function TeamSettingsPage() {
               {billingError && (
                 <p className="text-sm font-bold text-[#dc2626] mt-3">
                   {billingError}
+                </p>
+              )}
+              {billingNotice && (
+                <p className="text-sm font-bold text-[#2d5a2d] mt-3">
+                  {billingNotice}
                 </p>
               )}
 
