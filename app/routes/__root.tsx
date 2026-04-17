@@ -4,7 +4,6 @@ import {
   Scripts,
   createRootRoute,
 } from "@tanstack/react-router";
-import { ClerkProvider } from "@clerk/tanstack-react-start";
 import type { ReactNode } from "react";
 
 import { ConvexClientProvider } from "@/lib/convex";
@@ -18,14 +17,12 @@ export const Route = createRootRoute({
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "lawn — video review for creative teams" },
+      { title: "lawn" },
       {
         name: "description",
-        content:
-          "Video review and collaboration for creative teams. Frame-accurate comments, unlimited seats, $5/month flat. The open source Frame.io alternative.",
+        content: "Video review workspace.",
       },
       { property: "og:site_name", content: "lawn" },
-      { name: "twitter:site", content: "@theo" },
     ],
     links: [
       { rel: "stylesheet", href: appCss },
@@ -64,17 +61,7 @@ function RootComponent() {
 }
 
 function AppShell({ children }: { children: ReactNode }) {
-  const publishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
-
-  if (!publishableKey) {
-    throw new Error("Missing VITE_CLERK_PUBLISHABLE_KEY");
-  }
-
-  return (
-    <ClerkProvider publishableKey={publishableKey}>
-      <RootDocument>{children}</RootDocument>
-    </ClerkProvider>
-  );
+  return <RootDocument>{children}</RootDocument>;
 }
 
 function RootDocument({ children }: { children: ReactNode }) {

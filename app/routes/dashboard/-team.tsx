@@ -1,8 +1,7 @@
-
 import { useConvex, useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import { useLocation, useNavigate, useParams } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -20,7 +19,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Folder, Plus, MoreVertical, Trash2, Users, ArrowRight, CreditCard } from "lucide-react";
+import { Folder, Plus, MoreVertical, Trash2, Users, ArrowRight } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -43,7 +42,7 @@ type TeamProjectCardProps = {
     name: string;
     videoCount: number;
   };
-  canCreateProject: boolean;
+  canDeleteProject: boolean;
   onOpen: () => void;
   onDelete: (projectId: Id<"projects">) => void;
 };
@@ -51,7 +50,7 @@ type TeamProjectCardProps = {
 function TeamProjectCard({
   teamSlug,
   project,
-  canCreateProject,
+  canDeleteProject,
   onOpen,
   onDelete,
 }: TeamProjectCardProps) {
@@ -76,7 +75,7 @@ function TeamProjectCard({
             {project.videoCount} video{project.videoCount !== 1 ? "s" : ""}
           </CardDescription>
         </div>
-        {canCreateProject && (
+        {canDeleteProject && (
           <DropdownMenu>
             <DropdownMenuTrigger
               asChild
@@ -121,7 +120,7 @@ export default function TeamPage() {
   const pathname = useLocation().pathname;
   const teamSlug = typeof params.teamSlug === "string" ? params.teamSlug : "";
 
-  const { context, team, projects, billing } = useTeamData({ teamSlug });
+  const { context, team, projects } = useTeamData({ teamSlug });
   const createProject = useMutation(api.projects.create);
   const deleteProject = useMutation(api.projects.remove);
 
@@ -141,11 +140,9 @@ export default function TeamPage() {
 
   const isLoadingData =
     context === undefined ||
-    billing === undefined ||
     projects === undefined ||
     shouldCanonicalize;
 
-  // Not found state
   if (context === null) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -154,7 +151,7 @@ export default function TeamPage() {
     );
   }
 
-  const handleCreateProject = async (e: React.FormEvent) => {
+  const handleCreateProject = async (e: FormEvent) => {
     e.preventDefault();
     if (!newProjectName.trim() || !team) return;
 
@@ -184,22 +181,19 @@ export default function TeamPage() {
   };
 
   const canManageMembers = team?.role === "owner" || team?.role === "admin";
-  const hasActiveSubscription = billing?.hasActiveSubscription ?? false;
-  const canCreateProject = team?.role !== "viewer" && hasActiveSubscription;
-  const canAccessBilling = team?.role === "owner";
-  const billingPath = team ? teamSettingsPath(team.slug) : null;
+  const canCreateProject = team?.role !== "viewer";
+  const canDeleteProject = team?.role === "owner" || team?.role === "admin";
+  const canAccessSettings = team?.role === "owner" || team?.role === "admin";
 
   return (
     <div className="h-full flex flex-col">
-      {/* Header */}
       <DashboardHeader paths={[{ label: team?.slug ?? "team" }]}>
-        {canAccessBilling && team && (
+        {canAccessSettings && team && (
           <Button
             variant="outline"
-            onClick={() => navigate({ to: billingPath ?? teamSettingsPath(team.slug) })}
+            onClick={() => navigate({ to: teamSettingsPath(team.slug) })}
           >
-            <CreditCard className="sm:mr-1.5 h-4 w-4" />
-            <span className="hidden sm:inline">Billing</span>
+            <span className="hidden sm:inline">Settings</span>
           </Button>
         )}
         {canManageMembers && (
@@ -219,30 +213,7 @@ export default function TeamPage() {
         )}
       </DashboardHeader>
 
-      {/* Content */}
       <div className="flex-1 overflow-auto p-6">
-        {!isLoadingData && !hasActiveSubscription && canAccessBilling && (
-          <Card className="mb-6 border-[#1a1a1a]">
-            <CardHeader>
-              <CardTitle>Set up billing to create projects</CardTitle>
-              <CardDescription>
-                This team has no active subscription. Go to Billing to start Basic or Pro before
-                creating projects.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Button
-                variant="primary"
-                onClick={() => {
-                  if (!billingPath) return;
-                  navigate({ to: billingPath });
-                }}
-              >
-                Go to Billing
-              </Button>
-            </CardContent>
-          </Card>
-        )}
         {!isLoadingData && projects.length === 0 ? (
           <div className="h-full flex items-center justify-center animate-in fade-in duration-300">
             <Card className="max-w-sm text-center">
@@ -252,9 +223,7 @@ export default function TeamPage() {
                 </div>
                 <CardTitle className="text-lg">No projects yet</CardTitle>
                 <CardDescription>
-                  {hasActiveSubscription
-                    ? "Create your first project to start uploading videos."
-                    : "Activate billing first, then create your first project."}
+                  Create your first project to start uploading videos.
                 </CardDescription>
               </CardHeader>
               {canCreateProject && (
@@ -265,20 +234,6 @@ export default function TeamPage() {
                   >
                     <Plus className="mr-1.5 h-4 w-4" />
                     Create project
-                  </Button>
-                </CardContent>
-              )}
-              {!canCreateProject && canAccessBilling && (
-                <CardContent>
-                  <Button
-                    variant="primary"
-                    className="w-full"
-                    onClick={() => {
-                      if (!billingPath) return;
-                      navigate({ to: billingPath });
-                    }}
-                  >
-                    Go to Billing
                   </Button>
                 </CardContent>
               )}
@@ -294,7 +249,7 @@ export default function TeamPage() {
                 key={project._id}
                 teamSlug={team.slug}
                 project={project}
-                canCreateProject={canCreateProject}
+                canDeleteProject={canDeleteProject}
                 onOpen={() =>
                   navigate({ to: projectPath(team.slug, project._id) })
                 }
@@ -330,10 +285,7 @@ export default function TeamPage() {
               >
                 Cancel
               </Button>
-              <Button
-                type="submit"
-                disabled={!newProjectName.trim() || isLoading}
-              >
+              <Button type="submit" disabled={!newProjectName.trim() || isLoading}>
                 {isLoading ? "Creating..." : "Create"}
               </Button>
             </DialogFooter>
@@ -341,7 +293,7 @@ export default function TeamPage() {
         </DialogContent>
       </Dialog>
 
-      {canManageMembers && team && (
+      {team && canManageMembers && (
         <MemberInvite
           teamId={team._id}
           open={memberDialogOpen}

@@ -1,7 +1,6 @@
-import { useAction, useMutation } from "convex/react";
+import { useAction, useConvexAuth, useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import { Link, useParams } from "@tanstack/react-router";
-import { useUser } from "@clerk/tanstack-react-start";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { VideoPlayer, type VideoPlayerHandle } from "@/components/video-player/VideoPlayer";
 import { Button } from "@/components/ui/button";
@@ -15,7 +14,7 @@ import { useWatchData } from "./-watch.data";
 export default function WatchPage() {
   const params = useParams({ strict: false });
   const publicId = params.publicId as string;
-  const { user, isLoaded: isUserLoaded } = useUser();
+  const { isAuthenticated } = useConvexAuth();
 
   const createComment = useMutation(api.comments.createForPublic);
   const getPlaybackSession = useAction(api.videoActions.getPublicPlaybackSession);
@@ -310,7 +309,7 @@ export default function WatchPage() {
           </div>
           
           <div className="flex-shrink-0 border-t-2 border-[#1a1a1a] bg-[#f0f0e8] p-4">
-            {isUserLoaded && user ? (
+            {isAuthenticated ? (
               <form onSubmit={handleSubmitComment} className="space-y-2">
                 <div className="flex items-center gap-2 text-xs text-[#666]">
                   <Clock className="h-3.5 w-3.5" />
@@ -419,7 +418,7 @@ export default function WatchPage() {
           </div>
           
           <div className="flex-shrink-0 border-t-2 border-[#1a1a1a] bg-[#f0f0e8] p-4 pb-safe">
-            {isUserLoaded && user ? (
+            {isAuthenticated ? (
               <form onSubmit={handleSubmitComment} className="space-y-2">
                 <div className="flex items-center gap-2 text-xs text-[#666]">
                   <Clock className="h-3.5 w-3.5" />

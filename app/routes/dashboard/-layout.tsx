@@ -1,23 +1,11 @@
 
-import { useAuth } from "@clerk/tanstack-react-start";
-import { useConvex, useQuery } from "convex/react";
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from "react";
+import { useConvexAuth, useQuery } from "convex/react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 
-import {
-  Outlet,
-  Link,
-  useLocation,
-  useParams,
-} from "@tanstack/react-router";
+import { Outlet, useLocation, useParams } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
-import {
-  dashboardHomePath,
-  teamHomePath,
-  teamSettingsPath,
-} from "@/lib/routes";
-import { useRoutePrewarmIntent } from "@/lib/useRoutePrewarmIntent";
 import {
   Dialog,
   DialogContent,
@@ -26,9 +14,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { UploadProgress } from "@/components/upload/UploadProgress";
-import { prewarmDashboardIndex } from "./-index.data";
-import { prewarmSettings } from "./-settings.data";
-import { prewarmTeam } from "./-team.data";
 import { useVideoUploadManager } from "./-useVideoUploadManager";
 import { DashboardUploadProvider } from "@/lib/dashboardUploadContext";
 
@@ -48,11 +33,10 @@ function dragEventHasFiles(event: DragEvent) {
 }
 
 export default function DashboardLayout() {
-  const { isLoaded, userId } = useAuth();
+  const { isAuthenticated, isLoading } = useConvexAuth();
   const location = useLocation();
   const { pathname, searchStr } = location;
   const params = useParams({ strict: false });
-  const convex = useConvex();
   const teamSlug =
     typeof params.teamSlug === "string" ? params.teamSlug : undefined;
   const routeProjectId =
@@ -65,8 +49,6 @@ export default function DashboardLayout() {
     api.videos.getPublicIdByVideoId,
     routeVideoId ? { videoId: routeVideoId } : "skip",
   );
-  const teamHome = teamSlug ? teamHomePath(teamSlug) : null;
-  const settingsPath = teamSlug ? teamSettingsPath(teamSlug) : null;
   const uploadTargets = useQuery(
     api.projects.listUploadTargets,
     teamSlug ? { teamSlug } : {},
@@ -197,10 +179,10 @@ export default function DashboardLayout() {
     [requestUpload, uploads, cancelUpload],
   );
   const isResolvingPublicPlaybackExemption =
-    Boolean(isLoaded && !userId && routeVideoId) && publicPlaybackId === undefined;
+    Boolean(!isLoading && !isAuthenticated && routeVideoId) && publicPlaybackId === undefined;
 
   useEffect(() => {
-    if (!isLoaded || userId) return;
+    if (isLoading || isAuthenticated) return;
     if (typeof window === "undefined") return;
 
     if (routeVideoId) {
@@ -213,9 +195,9 @@ export default function DashboardLayout() {
 
     const redirectUrl = `${pathname}${searchStr}`;
     window.location.replace(`/sign-in?redirect_url=${encodeURIComponent(redirectUrl)}`);
-  }, [isLoaded, userId, pathname, searchStr, routeVideoId, publicPlaybackId]);
+  }, [isAuthenticated, isLoading, pathname, searchStr, routeVideoId, publicPlaybackId]);
 
-  if (!isLoaded) {
+  if (isLoading) {
     return (
       <div className="h-full flex items-center justify-center bg-[#f0f0e8]">
         <div className="text-[#888]">Loading...</div>
@@ -223,7 +205,7 @@ export default function DashboardLayout() {
     );
   }
 
-  if (!userId) {
+  if (!isAuthenticated) {
     return (
       <div className="h-full flex items-center justify-center bg-[#f0f0e8]">
         <div className="text-[#888]">

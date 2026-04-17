@@ -1,7 +1,6 @@
-import { useAction, useMutation } from "convex/react";
+import { useAction, useConvexAuth, useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import { Link, useParams } from "@tanstack/react-router";
-import { useUser } from "@clerk/tanstack-react-start";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { VideoPlayer, type VideoPlayerHandle } from "@/components/video-player/VideoPlayer";
 import { Button } from "@/components/ui/button";
@@ -18,7 +17,7 @@ import { useShareData } from "./-share.data";
 export default function SharePage() {
   const params = useParams({ strict: false });
   const token = params.token as string;
-  const { user, isLoaded: isUserLoaded } = useUser();
+  const { isAuthenticated } = useConvexAuth();
 
   const issueAccessGrant = useMutation(api.shareLinks.issueAccessGrant);
   const createComment = useMutation(api.comments.createForShareGrant);
@@ -367,7 +366,7 @@ export default function SharePage() {
             <span className="text-xs text-[#888] font-mono">{formatTimestamp(currentTime)}</span>
           </div>
 
-          {isUserLoaded && user ? (
+          {isAuthenticated ? (
             <form onSubmit={handleSubmitComment} className="space-y-2">
               <div className="flex items-center gap-2 text-xs text-[#666]">
                 <Clock className="h-3.5 w-3.5" />

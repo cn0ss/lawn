@@ -1,9 +1,8 @@
 
-import { useMutation } from "convex/react";
+import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { useState } from "react";
-import { useUser } from "@clerk/tanstack-react-start";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -11,11 +10,16 @@ import { AlertCircle, Users, Mail, Check } from "lucide-react";
 import { teamHomePath } from "@/lib/routes";
 import { useInviteData } from "./-invite.data";
 
+function normalizedEmail(value: string) {
+  return value.trim().toLowerCase();
+}
+
 export default function InvitePage() {
   const params = useParams({ strict: false });
   const navigate = useNavigate({});
   const token = params.token as string;
-  const { user, isLoaded } = useUser();
+  const { isLoading } = useConvexAuth();
+  const currentUser = useQuery(api.auth.getCurrentUser, {});
 
   const { invite } = useInviteData({ token });
   const acceptInvite = useMutation(api.teams.acceptInvite);
@@ -38,7 +42,7 @@ export default function InvitePage() {
     }
   };
 
-  if (invite === undefined || !isLoaded) {
+  if (invite === undefined || isLoading || currentUser === undefined) {
     return (
       <div className="min-h-screen bg-[#f0f0e8] flex items-center justify-center">
         <div className="text-[#888]">Loading...</div>
@@ -72,7 +76,7 @@ export default function InvitePage() {
   }
 
   // User not signed in
-  if (!user) {
+  if (!currentUser) {
     return (
       <div className="min-h-screen bg-[#f0f0e8] flex items-center justify-center p-4">
         <Card className="max-w-md w-full">
@@ -99,6 +103,9 @@ export default function InvitePage() {
             <a href={`/sign-in?redirect_url=${encodeURIComponent(`/invite/${token}`)}`} className="block">
               <Button className="w-full">Sign in to accept</Button>
             </a>
+            <a href={`/sign-up?redirect_url=${encodeURIComponent(`/invite/${token}`)}`} className="block">
+              <Button className="w-full" variant="outline">Create account to accept</Button>
+            </a>
           </CardContent>
         </Card>
       </div>
@@ -106,7 +113,7 @@ export default function InvitePage() {
   }
 
   // User signed in but with different email
-  if (user.primaryEmailAddress?.emailAddress !== invite.email) {
+  if (normalizedEmail(currentUser.email) !== normalizedEmail(invite.email)) {
     return (
       <div className="min-h-screen bg-[#f0f0e8] flex items-center justify-center p-4">
         <Card className="max-w-md w-full">
@@ -117,7 +124,7 @@ export default function InvitePage() {
             <CardTitle>Different email address</CardTitle>
             <CardDescription>
               This invite was sent to {invite.email}, but you&apos;re signed in as{" "}
-              {user.primaryEmailAddress?.emailAddress}.
+              {currentUser.email}.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
